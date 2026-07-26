@@ -11,7 +11,7 @@
 <p align="center">
   <a href="https://github.com/trillion-labs/scholar-search-rl/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-4f46e5.svg" alt="Apache 2.0 license"></a>
   <img src="https://img.shields.io/badge/Python-3.12-3776AB.svg?logo=python&logoColor=white" alt="Python 3.12">
-  <img src="https://img.shields.io/badge/CUDA-12.8-76B900.svg?logo=nvidia&logoColor=white" alt="CUDA 12.8">
+  <a href="https://huggingface.co/collections/trillionlabs/simulated-scholar-search-s3-models-and-datasets-6a42188a4d64a10aa86ccd61"><img src="https://img.shields.io/badge/%F0%9F%A4%97-Hugging%20Face%20Collection-FFD21E.svg" alt="Hugging Face collection"></a>
   <img src="https://img.shields.io/badge/Trainer-verl-7C3AED.svg" alt="verl trainer">
 </p>
 
@@ -47,24 +47,15 @@ local environment transfers to new corpora and search surfaces.
 
 ## System overview
 
-```text
-questions
-   │
-   ▼
-ReAct agent ──────── search / read / navigate / answer
-   │                                │
-   │                                ▼
-   └───────────────────── nine literature tools
-                                    │
-                         ┌──────────┼──────────┐
-                         ▼          ▼          ▼
-                      Milvus     DuckDB    citation graph
-                         │
-                         ▼
-              trajectory + outcome reward
-                         │
-                         ▼
-                   verl training
+```mermaid
+flowchart LR
+    Q[Questions] --> A[ReAct agent]
+    A <--> T[Nine literature tools]
+    T --> M[(Milvus)]
+    T --> D[(DuckDB)]
+    T --> C[Citation graph]
+    A --> R[Trajectory + outcome reward]
+    R --> V[verl training]
 ```
 
 The environment supports hybrid paper and passage retrieval, full-text reading,
