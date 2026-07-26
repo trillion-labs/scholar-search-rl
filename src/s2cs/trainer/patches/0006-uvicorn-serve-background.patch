@@ -1,0 +1,19 @@
+--- a/verl/workers/rollout/utils.py
++++ b/verl/workers/rollout/utils.py
+@@ -60,9 +60,13 @@
+             app.server_args = server_args
+             config = uvicorn.Config(app, host=server_address, port=server_port, log_level="warning")
+             server = uvicorn.Server(config)
+-            server.should_exit = True
+-            await server.serve()
+-            server_task = asyncio.create_task(server.main_loop())
++            # uvicorn 0.49: the old `should_exit=True; await serve(); main_loop()`
++            # idiom runs startup then exits without ever serving requests. Run
++            # serve() as a background task and wait until it has started so the
++            # HTTP endpoints (release_memory_occupation, generate, …) are live.
++            server_task = asyncio.create_task(server.serve())
++            while not server.started:
++                await asyncio.sleep(0.1)
+             break
+         except (OSError, SystemExit) as e:
+             logger.error(f"Failed to start HTTP server on port {server_port} at try {i}, error: {e}")

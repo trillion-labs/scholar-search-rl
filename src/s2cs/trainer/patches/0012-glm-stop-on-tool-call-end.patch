@@ -1,0 +1,23 @@
+--- a/verl/experimental/agent_loop/tool_agent_loop.py
++++ b/verl/experimental/agent_loop/tool_agent_loop.py
+@@ -119,3 +119,20 @@ class ToolAgentLoop(AgentLoopBase):
+     async def run(self, sampling_params: dict[str, Any], **kwargs) -> AgentLoopOutput:
+         messages = list(kwargs["raw_prompt"])
++        # s2cs: this GLM-style format ends the assistant span at </tool_call> (the
++        # <|observation|> that follows is next-turn context, not a generated token),
++        # so the model emits no stop after a tool call and runs away emitting
++        # hundreds of <tool_call> blocks in one turn until it exhausts the token
++        # budget (-> never submits -> reward 0). Stop generation when </tool_call>
++        # is emitted so the loop can run the tool, inject the observation, and
++        # continue. Must use stop_token_ids (NOT a stop string): verl async runs
++        # token-in-token-out (skip_tokenizer_init), so the sglang scheduler has no
++        # detokenizer to match stop strings. </tool_call> is a single GLM token; the
++        # matched token is kept in the output, so the parser still sees a complete
++        # call. Gated to glm45 (hermes/Qwen stop on <|im_end|> on their own).
++        if getattr(self, "multi_turn_format", None) == "glm45":
++            _eot_ids = self.tokenizer.encode("</tool_call>", add_special_tokens=False)
++            if len(_eot_ids) == 1:
++                _ids = list(sampling_params.get("stop_token_ids") or [])
++                if _eot_ids[0] not in _ids:
++                    sampling_params = {**sampling_params, "stop_token_ids": [*_ids, _eot_ids[0]], "no_stop_trim": True}
+         image_data = copy.deepcopy(kwargs.get("multi_modal_data", {}).get("image", None))

@@ -1,0 +1,13 @@
+--- a/verl/workers/rollout/sglang_rollout/async_sglang_server.py
++++ b/verl/workers/rollout/sglang_rollout/async_sglang_server.py
+@@ -152,6 +152,10 @@
+             "attention_backend": attention_backend if attention_backend is not None else "fa3",
+             "skip_tokenizer_init": self.config.skip_tokenizer_init,
+             "enable_metrics": engine_kwargs.pop("enable_metrics", True),  # 默认启用 Prometheus metrics
++            # s2cs: thread the MoE runner backend through (e.g. triton for the
++            # bf16 DeepSeek-V3-style MoE). Upstream drops every engine_kwargs
++            # key but attention_backend; default "auto" preserves dense/Qwen behavior.
++            "moe_runner_backend": engine_kwargs.pop("moe_runner_backend", "auto"),
+             # sglang 0.5.7 lifespan runs a warmup thread that HTTP-pings
+             # 127.0.0.1:<port>; verl drives the engine in-process and binds the
+             # server elsewhere, so the ping hangs startup. verl needs no warmup.

@@ -1,0 +1,107 @@
+--- a/verl/workers/actor/dp_actor.py
++++ b/verl/workers/actor/dp_actor.py
+@@ -27,7 +27,7 @@
+ 
+ import verl.utils.torch_functional as verl_F
+ from verl import DataProto
+-from verl.trainer.ppo.core_algos import agg_loss, get_policy_loss_fn, kl_penalty
++from verl.trainer.ppo.core_algos import agg_loss, get_policy_loss_fn, kl_penalty, seal_classification_loss
+ from verl.utils.attention_utils import index_first_axis, pad_input, rearrange, unpad_input
+ from verl.utils.device import get_device_id, get_device_name
+ from verl.utils.fsdp_utils import FSDPModule, fsdp2_clip_grad_norm_
+@@ -84,13 +84,15 @@
+         self.device_name = get_device_name()
+ 
+     def _forward_micro_batch(
+-        self, micro_batch, temperature, calculate_entropy=False
++        self, micro_batch, temperature, calculate_entropy=False, return_log_z=False
+     ) -> tuple[torch.Tensor, torch.Tensor]:
+         """
+         Returns:
+             entropy: # (bs, response_len)
+             log_probs: # (bs, response_len)
++            log_z: # (bs, response_len, 1) — only when return_log_z (SEAL head)
+         """
++        log_z = None
+         response_length = micro_batch["responses"].size(-1)
+         multi_modal_inputs = {}
+         if "multi_modal_inputs" in micro_batch.keys():
+@@ -166,6 +168,9 @@
+                 if self.use_fused_kernels:
+                     extra_args["temperature"] = temperature
+                     extra_args["return_dict"] = True
++                if return_log_z:
++                    extra_args["output_hidden_states"] = True
++                    extra_args["return_dict"] = True
+ 
+                 output = self.actor_module(
+                     input_ids=input_ids_rmpad,
+@@ -239,6 +244,22 @@
+                     entropy = full_entropy.squeeze(-1)[:, -response_length - 1 : -1]  # (bsz, response_length)
+                 log_probs = full_log_probs.squeeze(-1)[:, -response_length - 1 : -1]  # (bsz, response_length)
+ 
++                # SEAL: project the actor's last hidden state for response tokens
++                # to a per-token separation logit. Un-rmpad to (bsz, seqlen, h)
++                # and slice the same response window as log_probs so it aligns
++                # with advantages/response_mask.
++                if return_log_z:
++                    last_hidden = output.hidden_states[-1].squeeze(0)  # (total_nnz, h)
++                    if self.use_ulysses_sp:
++                        last_hidden = gather_outputs_and_unpad(
++                            last_hidden, gather_dim=0, unpad_dim=0, padding_size=pad_size
++                        )
++                    full_last_hidden = pad_input(
++                        hidden_states=last_hidden, indices=indices, batch=batch_size, seqlen=seqlen
++                    )
++                    resp_hidden = full_last_hidden[:, -response_length - 1 : -1, :]  # (bsz, response_length, h)
++                    log_z = self.actor_module.proj_z(resp_hidden)  # (bsz, response_length, 1)
++
+             else:  # not using rmpad and no ulysses sp
+                 extra_args = {}
+                 if self.use_fused_kernels:
+@@ -270,6 +291,8 @@
+                         else:
+                             entropy = torch.utils.checkpoint.checkpoint(verl_F.entropy_from_logits, logits)
+ 
++            if return_log_z:
++                return entropy, log_probs, log_z
+             return entropy, log_probs
+ 
+     def _optimizer_step(self):
+@@ -430,9 +453,16 @@
+                     calculate_entropy = False
+                     if entropy_coeff != 0:
+                         calculate_entropy = True
+-                    entropy, log_prob = self._forward_micro_batch(
+-                        model_inputs, temperature=temperature, calculate_entropy=calculate_entropy
+-                    )
++                    seal_coef = float(os.environ.get("S2CS_SEAL_COEF", "0.0"))
++                    if seal_coef > 0.0:
++                        entropy, log_prob, log_z = self._forward_micro_batch(
++                            model_inputs, temperature=temperature, calculate_entropy=calculate_entropy, return_log_z=True
++                        )
++                    else:
++                        log_z = None
++                        entropy, log_prob = self._forward_micro_batch(
++                            model_inputs, temperature=temperature, calculate_entropy=calculate_entropy
++                        )
+ 
+                     if on_policy:
+                         old_log_prob = log_prob.detach()
+@@ -486,6 +516,16 @@
+                         micro_batch_metrics["actor/kl_loss"] = kl_loss.detach().item() * loss_scale_factor
+                         micro_batch_metrics["actor/kl_coef"] = self.config.kl_loss_coef
+ 
++                    # SEAL separation auxiliary loss (gated by S2CS_SEAL_COEF env).
++                    if seal_coef > 0.0 and log_z is not None:
++                        classification_loss = seal_classification_loss(
++                            log_z, advantages, response_mask, loss_agg_mode=loss_agg_mode
++                        )
++                        policy_loss = policy_loss + seal_coef * classification_loss
++                        micro_batch_metrics["actor/classification_loss"] = (
++                            classification_loss.detach().item() * loss_scale_factor
++                        )
++
+                     if self.config.use_dynamic_bsz:
+                         # relative to the dynamic bsz
+                         loss = policy_loss * loss_scale_factor

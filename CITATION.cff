@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata below."
+title: "Simulated Scholar Search (S3): Research Code"
+type: software
+authors:
+  - family-names: Lee
+    given-names: Segyu
+  - family-names: Suk
+    given-names: Juyoung
+version: 0.1.0
+date-released: "2026-07-26"
+license: Apache-2.0
+repository-code: "https://github.com/trillion-labs/scholar-search-rl"
+url: "https://github.com/trillion-labs/scholar-search-rl"
+keywords:
+  - reinforcement learning
+  - information retrieval
+  - search agents
+  - scientific literature
+  - deep research

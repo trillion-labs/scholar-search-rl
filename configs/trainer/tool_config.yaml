@@ -1,0 +1,240 @@
+tools:
+- class_name: s2cs.trainer.tools.s2cs_tool.S2CSTool
+  config:
+    tool_name: search_papers
+    type: native
+  tool_schema:
+    type: function
+    function:
+      name: search_papers
+      description: 'Search papers by natural-language query.
+
+
+        Returns up to `limit` papers ranked by hybrid (BGE-M3 dense + learned
+
+        sparse) similarity. Pass year_min / year_max / venue to narrow the
+
+        candidate pool; omit them to search the whole corpus.'
+      parameters:
+        type: object
+        properties:
+          query:
+            type: string
+          limit:
+            type: integer
+          year_min:
+            type: integer
+          year_max:
+            type: integer
+          venue:
+            type: string
+        required:
+        - query
+- class_name: s2cs.trainer.tools.s2cs_tool.S2CSTool
+  config:
+    tool_name: search_snippets
+    type: native
+  tool_schema:
+    type: function
+    function:
+      name: search_snippets
+      description: 'Search text snippets across papers by natural-language query.
+
+
+        Returns up to `limit` snippets ranked by similarity. Pass `paper_ids`
+
+        to restrict the search to a specific set of papers (useful after
+
+        narrowing down candidate papers with search_papers).'
+      parameters:
+        type: object
+        properties:
+          query:
+            type: string
+          limit:
+            type: integer
+          paper_ids:
+            type: array
+            items:
+              type: integer
+        required:
+        - query
+- class_name: s2cs.trainer.tools.s2cs_tool.S2CSTool
+  config:
+    tool_name: paper_info
+    type: native
+  tool_schema:
+    type: function
+    function:
+      name: paper_info
+      description: 'Look up a paper''s metadata: title, abstract, summary, year, venue,
+
+        citation count, classification, and the list of section titles with
+
+        line counts for navigation.
+
+
+        Returns None if the paper is not in the local corpus. This is the cheap
+
+        first step you should take when you have a paper_id and need to decide
+
+        whether to read further.'
+      parameters:
+        type: object
+        properties:
+          paper_id:
+            type: integer
+        required:
+        - paper_id
+- class_name: s2cs.trainer.tools.s2cs_tool.S2CSTool
+  config:
+    tool_name: read_paper
+    type: native
+  tool_schema:
+    type: function
+    function:
+      name: read_paper
+      description: 'Read a slice of a paper''s text, line-paginated.
+
+
+        If `section_idx` is provided, reads lines of that specific section
+
+        (use paper_meta to discover sections). Otherwise reads the full body.
+
+        Returns lines [offset, offset+limit) joined by newlines, plus the
+
+        section''s total line count so you can decide whether to keep paging.'
+      parameters:
+        type: object
+        properties:
+          paper_id:
+            type: integer
+          section_idx:
+            type: integer
+          offset:
+            type: integer
+          limit:
+            type: integer
+        required:
+        - paper_id
+- class_name: s2cs.trainer.tools.s2cs_tool.S2CSTool
+  config:
+    tool_name: find_in_paper
+    type: native
+  tool_schema:
+    type: function
+    function:
+      name: find_in_paper
+      description: 'Search inside a single paper''s body for a regex `pattern`.
+
+
+        Returns up to `max_hits` matches, each with the matched line, its line
+
+        number, and `context` surrounding lines on each side.'
+      parameters:
+        type: object
+        properties:
+          paper_id:
+            type: integer
+          pattern:
+            type: string
+          context:
+            type: integer
+          max_hits:
+            type: integer
+        required:
+        - paper_id
+        - pattern
+- class_name: s2cs.trainer.tools.s2cs_tool.S2CSTool
+  config:
+    tool_name: list_references
+    type: native
+  tool_schema:
+    type: function
+    function:
+      name: list_references
+      description: 'List papers that `paper_id` cites (its outgoing citations).
+
+
+        Only papers present in the local corpus appear here; citations to
+
+        external papers are silently omitted.'
+      parameters:
+        type: object
+        properties:
+          paper_id:
+            type: integer
+          limit:
+            type: integer
+        required:
+        - paper_id
+- class_name: s2cs.trainer.tools.s2cs_tool.S2CSTool
+  config:
+    tool_name: list_citations
+    type: native
+  tool_schema:
+    type: function
+    function:
+      name: list_citations
+      description: 'List papers that cite `paper_id` (its incoming citations).
+
+
+        Returns up to `limit` citing papers.'
+      parameters:
+        type: object
+        properties:
+          paper_id:
+            type: integer
+          limit:
+            type: integer
+        required:
+        - paper_id
+- class_name: s2cs.trainer.tools.s2cs_tool.S2CSTool
+  config:
+    tool_name: find_similar
+    type: native
+  tool_schema:
+    type: function
+    function:
+      name: find_similar
+      description: "Find papers similar to `paper_id`. `kind` chooses the relation:\n\
+        \n- \"semantic\": nearest neighbours in the paper-level embedding space \u2014\
+        \n  topical similarity that does not require any citation link.\n- \"co_citation\"\
+        : papers most often cited together with this paper \u2014\n  they appear together\
+        \ in other papers' reference lists.\n- \"bibliographic_coupling\": papers\
+        \ that share many references with\n  this paper \u2014 they read from the\
+        \ same prior literature.\n\nUse semantic for lateral exploration. Use the\
+        \ graph-based variants\nwhen you want similarity grounded in actual citation\
+        \ behaviour."
+      parameters:
+        type: object
+        properties:
+          paper_id:
+            type: integer
+          kind:
+            type: string
+          limit:
+            type: integer
+        required:
+        - paper_id
+- class_name: s2cs.trainer.tools.s2cs_tool.S2CSTool
+  config:
+    tool_name: submit_answer
+    type: native
+  tool_schema:
+    type: function
+    function:
+      name: submit_answer
+      description: 'Submit your final answer. Calling this terminates the session.
+
+
+        Submit only after you have enough evidence; you cannot search further
+
+        after submitting.'
+      parameters:
+        type: object
+        properties:
+          answer:
+            type: string
+        required:
+        - answer

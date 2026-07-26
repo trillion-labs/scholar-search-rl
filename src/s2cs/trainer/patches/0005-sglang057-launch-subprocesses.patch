@@ -1,0 +1,47 @@
+--- a/verl/workers/rollout/sglang_rollout/async_sglang_server.py
++++ b/verl/workers/rollout/sglang_rollout/async_sglang_server.py
+@@ -152,6 +152,10 @@
+             "attention_backend": attention_backend if attention_backend is not None else "fa3",
+             "skip_tokenizer_init": self.config.skip_tokenizer_init,
+             "enable_metrics": engine_kwargs.pop("enable_metrics", True),  # 默认启用 Prometheus metrics
++            # sglang 0.5.7 lifespan runs a warmup thread that HTTP-pings
++            # 127.0.0.1:<port>; verl drives the engine in-process and binds the
++            # server elsewhere, so the ping hangs startup. verl needs no warmup.
++            "skip_server_warmup": True,
+         }
+ 
+         # NOTE: We can't directly call SGLang's launch_server since it's not an async function.
+@@ -159,8 +163,18 @@
+         sglang.srt.entrypoints.engine._set_envs_and_config = _set_envs_and_config
+         os.environ["SGLANG_BLOCK_NONZERO_RANK_CHILDREN"] = "0"
+         server_args = ServerArgs(**args)
+-        self.tokenizer_manager, self.template_manager, self.scheduler_info = _launch_subprocesses(
+-            server_args=server_args
++        # sglang 0.5.7 _launch_subprocesses requires the process-launcher funcs
++        # to be injected and returns a 4-tuple (verl-fork targeted 0.5.2's
++        # 3-arg / 3-return form). Pass sglang's canonical defaults.
++        from sglang.srt.entrypoints.engine import init_tokenizer_manager
++        from sglang.srt.managers.detokenizer_manager import run_detokenizer_process
++        from sglang.srt.managers.scheduler import run_scheduler_process
++
++        self.tokenizer_manager, self.template_manager, self.scheduler_info, _ = _launch_subprocesses(
++            server_args=server_args,
++            init_tokenizer_manager_func=init_tokenizer_manager,
++            run_scheduler_process_func=run_scheduler_process,
++            run_detokenizer_process_func=run_detokenizer_process,
+         )
+ 
+         # In multi-node cases, non-zero rank nodes should not launch http server.
+@@ -175,6 +189,12 @@
+             )
+         )
+         app.is_single_tokenizer_mode = True
++        # sglang 0.5.7 lifespan reads app.server_args / app.warmup_thread_kwargs
++        # in single-tokenizer mode (0.5.2 computed them internally). Set them as
++        # sglang's own launch_server does; only server_args is required by
++        # _wait_and_warmup (launch_callback/execute_warmup_func default).
++        app.server_args = server_args
++        app.warmup_thread_kwargs = dict(server_args=server_args)
+         # Use fixed port: 30000 + replica_rank for HTTP server
+         fixed_http_port = self._base_http_port + self.replica_rank
+         logger.info(f"SGLangHttpServer attempting to start on fixed port {fixed_http_port} (replica_rank={self.replica_rank})")

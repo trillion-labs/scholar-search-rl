@@ -1,0 +1,28 @@
+--- a/verl/trainer/ppo/core_algos.py
++++ b/verl/trainer/ppo/core_algos.py
+@@ -805,6 +805,25 @@
+     return loss
+ 
+ 
++_seal_bce = torch.nn.BCEWithLogitsLoss(reduction="none")
++
++
++def seal_classification_loss(log_z, advantages, response_mask, loss_agg_mode="token-mean"):
++    """SEAL separation auxiliary loss (arXiv: WindyLee0822/SEAL).
++
++    Per-token binary classification of "does this token belong to a
++    positive-advantage (correct) trajectory" from the actor's last hidden state
++    (projected to `log_z`). Pulls correct/incorrect trajectory representations
++    apart, targeting agent-RL entropy eruption. Pure; grafted onto the verl
++    policy loss at the actor call site.
++    """
++    class_labels = torch.where(
++        advantages < 0, torch.zeros_like(advantages), torch.ones_like(advantages)
++    ).float()
++    per_tok = _seal_bce(log_z.squeeze(-1), class_labels)
++    return agg_loss(loss_mat=per_tok, loss_mask=response_mask, loss_agg_mode=loss_agg_mode)
++
++
+ @deprecated("verl.trainer.ppo.core_algos.compute_policy_loss_vanilla")  #On Policy的重要性采样
+ def compute_policy_loss(
+     old_log_prob,

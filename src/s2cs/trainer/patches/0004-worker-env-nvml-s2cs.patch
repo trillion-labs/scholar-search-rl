@@ -1,0 +1,47 @@
+--- a/verl/trainer/constants_ppo.py
++++ b/verl/trainer/constants_ppo.py
+@@ -38,6 +38,29 @@
+         "LLM_JUDGE_MODEL": os.environ.get("LLM_JUDGE_MODEL", ""),
+         "LLM_JUDGE_MAX_RETRIES": os.environ.get("LLM_JUDGE_MAX_RETRIES", "3"),
+         "LLM_JUDGE_TIMEOUT": os.environ.get("LLM_JUDGE_TIMEOUT", "60"),
++        # s2cs: make torch.cuda.is_available() fork-safe in rollout workers
++        # (else sglang's lru_cached is_cuda() pins False and falls back to vllm).
++        "PYTORCH_NVML_BASED_CUDA_CHECK": "1",
++        # s2cs: tools + reward run in Ray workers and need our env service config.
++        "S2CS_MILVUS_URI": os.environ.get("S2CS_MILVUS_URI", ""),
++        "S2CS_PAPERS_DB": os.environ.get("S2CS_PAPERS_DB", ""),
++        "S2CS_EDGES_PATH": os.environ.get("S2CS_EDGES_PATH", ""),
++        "S2CS_MODEL": os.environ.get("S2CS_MODEL", ""),
++        "S2CS_DEVICES": os.environ.get("S2CS_DEVICES", ""),
++        "S2CS_EMBED_URL": os.environ.get("S2CS_EMBED_URL", ""),
++        # s2cs: per-run flashinfer JIT cache for the sglang rollout actor (the
++        # shared ~/.cache/flashinfer bakes stale per-job venv -I paths).
++        "FLASHINFER_WORKSPACE_BASE": os.environ.get("FLASHINFER_WORKSPACE_BASE", ""),
++        # s2cs: Python.h for triton JIT in workers (compute nodes lack python3-dev).
++        "CPATH": os.environ.get("CPATH", ""),
++        # s2cs: SEAL separation-loss toggle (read by fsdp_workers + dp_actor).
++        "S2CS_SEAL_COEF": os.environ.get("S2CS_SEAL_COEF", "0.0"),
++        "S2CS_SEAL_PROJ_LAYER": os.environ.get("S2CS_SEAL_PROJ_LAYER", "3"),
++        "JUDGE_BASE_URL": os.environ.get("JUDGE_BASE_URL", ""),
++        "JUDGE_MODEL": os.environ.get("JUDGE_MODEL", ""),
++        "JUDGE_API_KEY": os.environ.get("JUDGE_API_KEY", ""),
++        "JUDGE_MAX_CONCURRENCY": os.environ.get("JUDGE_MAX_CONCURRENCY", "16"),
++        "S2CS_REWARD_DUMP": os.environ.get("S2CS_REWARD_DUMP", ""),
+     },
+ }
+ 
+@@ -58,7 +81,13 @@
+     # 这些环境变量必须传递给 Ray worker，即使主进程中已设置
+     must_pass_keys = {
+         "SWANLAB_API_KEY", "SWANLAB_MODE", "SWANLAB_LOG_DIR",
+-        "LLM_JUDGE_API_BASE", "LLM_JUDGE_MODEL", "LLM_JUDGE_MAX_RETRIES", "LLM_JUDGE_TIMEOUT"
++        "LLM_JUDGE_API_BASE", "LLM_JUDGE_MODEL", "LLM_JUDGE_MAX_RETRIES", "LLM_JUDGE_TIMEOUT",
++        "PYTORCH_NVML_BASED_CUDA_CHECK",
++        "S2CS_MILVUS_URI", "S2CS_PAPERS_DB", "S2CS_EDGES_PATH", "S2CS_MODEL",
++        "S2CS_DEVICES", "S2CS_EMBED_URL", "FLASHINFER_WORKSPACE_BASE", "CPATH",
++        "S2CS_SEAL_COEF", "S2CS_SEAL_PROJ_LAYER",
++        "JUDGE_BASE_URL", "JUDGE_MODEL", "JUDGE_API_KEY", "JUDGE_MAX_CONCURRENCY",
++        "S2CS_REWARD_DUMP",
+     }
+     for key in list(runtime_env["env_vars"].keys()):
+         if os.environ.get(key) is not None and key not in must_pass_keys:

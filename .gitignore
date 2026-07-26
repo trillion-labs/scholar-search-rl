@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Environments and secrets
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+
+# Build artifacts
+build/
+dist/
+
+# Research artifacts
+/data/
+/experiments/
+/checkpoints/
+/logs/
+/results/
+*.duckdb
+*.duckdb.wal
+*.parquet
+
+# Vendored training framework
+src/s2cs/trainer/vendor/
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store

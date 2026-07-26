@@ -1,0 +1,60 @@
+--- a/verl/experimental/agent_loop/tool_parser.py
++++ b/verl/experimental/agent_loop/tool_parser.py
+@@ -159,3 +159,58 @@
+         content = regex.sub(self.tool_call_pattern, "", text)
+
+         return content, function_calls
++
++
++@ToolParser.register("glm45")
++class Glm45ToolParser(ToolParser):
++    """Tool parser for GLM-4.5 / GLM-4.6-style tool calls.
++
++    Supports GLM-style chat templates, which emit per generated tool call:
++
++        <tool_call>{name}
++        <arg_key>{k}</arg_key>
++        <arg_value>{v}</arg_value>
++        ...
++        </tool_call>
++
++    This is NOT the hermes JSON body, so HermesToolParser's json.loads fails. We
++    reuse sglang's maintained Glm4MoeDetector regexes + argument coercion (the
++    same detector sglang uses to *serve* GLM models, so the parse matches what
++    the model was trained to emit), but bypass its parse_base_json -- that step
++    validates names against a tool list and silently drops unknown tools, which
++    we don't have here. The agent loop validates names when it dispatches the
++    call. Non-string args are JSON-encoded by the template, so json-first
++    coercion in _parse_argument_pairs types them correctly without the schema.
++    """
++
++    def __init__(self, tokenizer) -> None:
++        super().__init__(tokenizer)
++        from sglang.srt.function_call.glm4_moe_detector import Glm4MoeDetector
++
++        self._detector = Glm4MoeDetector()
++        self.tool_call_start_token = self._detector.bot_token  # "<tool_call>"
++
++    @rollout_trace_op
++    async def extract_tool_calls(self, responses_ids: list[int]) -> tuple[str, list[FunctionCall]]:
++        loop = asyncio.get_running_loop()
++        text = await loop.run_in_executor(None, self.tokenizer.decode, responses_ids)
++        if self.tool_call_start_token not in text:
++            return text, []
++
++        d = self._detector
++        function_calls = []
++        for raw_call in regex.findall(d.func_call_regex, text, regex.DOTALL):
++            try:
++                detail = d.func_detail_regex.search(raw_call)
++                if detail is None:
++                    continue
++                name = detail.group(1).strip()
++                pairs = d.func_arg_regex.findall(detail.group(2))
++                args = d._parse_argument_pairs(pairs, name, [])
++                function_calls.append(FunctionCall(name=name, arguments=json.dumps(args, ensure_ascii=False)))
++            except Exception as e:
++                logger.error(f"Failed to decode GLM tool call: {e}")
++
++        content = regex.sub(d.func_call_regex, "", text, flags=regex.DOTALL)
++        return content, function_calls

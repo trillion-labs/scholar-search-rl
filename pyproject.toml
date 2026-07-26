@@ -1,0 +1,102 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "s2cs"
+version = "0.1.0"
+description = "Simulated Scholar Search environment and verl-based RL research code."
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.12,<3.13"
+keywords = ["search agents", "reinforcement learning", "information retrieval", "scientific literature"]
+dependencies = [
+    "duckdb>=1.4,<2",
+    "pyarrow>=21,<25",
+    "numpy>=2.4,<3",
+    "pandas>=2.3,<3",
+    "huggingface-hub>=0.36",
+    "tyro>=1.0,<2",
+    "pymilvus[bulk-writer]>=2.5,<3",
+    "FlagEmbedding>=1.3,<2",
+    "torch==2.9.1",
+    "tqdm>=4.67",
+    "openai>=2.0",
+    "python-dotenv>=1.0,<2",
+]
+
+[project.urls]
+Repository = "https://github.com/trillion-labs/scholar-search-rl"
+Corpus = "https://huggingface.co/datasets/AlgorithmicResearchGroup/s2orc-cs-enriched"
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu128" }
+torchvision = { index = "pytorch-cu128" }
+torchaudio = { index = "pytorch-cu128" }
+
+[tool.uv]
+# Evaluation pins datasets<3.3 while verl training needs datasets>=4.8.
+# They never share an environment — eval and RL training are separate jobs —
+# so declare them mutually exclusive and let uv fork the resolution.
+conflicts = [
+    [{ group = "eval" }, { group = "trainer" }],
+]
+override-dependencies = [
+    "torch==2.9.1",
+    "torchvision==0.24.1",
+    "torchaudio==2.9.1",
+    "torchao==0.15.0",
+    "openai>2.6.1",
+    "soundfile>=0.12.1,<0.13.0",
+    "outlines-core==0.1.26",
+    "grpcio>=1.76.0",
+    "grpcio-reflection>=1.76.0",
+    "xgrammar == 0.1.29; platform_machine == 'x86_64' or platform_machine == 'aarch64' or platform_machine == 'arm64' or platform_machine == 's390x' or platform_machine == 'ppc64le'",
+    "llguidance >= 1.3.0, < 1.4.0; platform_machine == 'x86_64' or platform_machine == 'arm64' or platform_machine == 'aarch64' or platform_machine == 's390x' or platform_machine == 'ppc64le'",
+]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4",
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.15",
+]
+eval = [
+    "astabench @ git+https://github.com/allenai/asta-bench.git@v0.5.3",
+]
+trainer = [
+    "datasets>=4.8,<5",
+    "ray[default]>=2.49",
+    "sglang[tracing]==0.5.7; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "flash-attn @ https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.1/flash_attn-2.8.1%2Bcu12torch2.9cxx11abiTRUE-cp312-cp312-linux_x86_64.whl ; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "tensordict",
+    "omegaconf",
+    "pyyaml",
+    "codetiming",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["s2cs*"]
+
+[tool.ruff]
+line-length = 120
+include = ["*.py", "src/**/*.py", "tests/**/*.py"]
+# The verl fork is vendored (gitignored) under trainer/vendor and patched via
+# diffs, not maintained to our style; the `src/**/*.py` include would otherwise pull
+# ~3.7k upstream findings into `make check`. Keep it out of our lint/format scope.
+extend-exclude = ["src/s2cs/trainer/vendor"]
+
+[tool.ruff.format]
+quote-style = "double"
+skip-magic-trailing-comma = false
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+ignore = ["E731", "E501"]

@@ -1,0 +1,27 @@
+--- a/verl/experimental/agent_loop/tool_agent_loop.py
++++ b/verl/experimental/agent_loop/tool_agent_loop.py
+@@ -101,6 +101,7 @@
+         cls.tools = {tool.name: tool for tool in tool_list}
+         cls.tool_schemas = [tool.tool_schema.model_dump(exclude_unset=True, exclude_none=True) for tool in tool_list]
+         cls.tool_parser = ToolParser.get_tool_parser(config.actor_rollout_ref.rollout.multi_turn.format, cls.tokenizer)
++        cls.multi_turn_format = config.actor_rollout_ref.rollout.multi_turn.format
+         print(f"Initialized tools: {cls.tools}")
+ 
+         cls.apply_chat_template_kwargs = config.data.get("apply_chat_template_kwargs", {})
+@@ -457,8 +458,14 @@
+         response_ids = response_ids[len(self.system_prompt) :]
+         
+         # 在 tool response 开头添加 \n，补齐 SGLang 生成的 assistant turn 结尾缺失的 \n
+-        newline_ids = self.tokenizer.encode('\n', add_special_tokens=False)
+-        response_ids = newline_ids + response_ids
++        # s2cs: this Qwen/hermes fixup is wrong for GLM-style templates, whose
++        # SFT format places <|observation|> directly after </tool_call> with no
++        # newline. Prepending one feeds the policy a tool-boundary token sequence it
++        # never saw in SFT (a train/inference skew at the highest-frequency control
++        # point). Only apply it for non-GLM formats.
++        if self.multi_turn_format != "glm45":
++            newline_ids = self.tokenizer.encode('\n', add_special_tokens=False)
++            response_ids = newline_ids + response_ids
+         
+         # Update prompt_ids and response_mask
+         agent_data.prompt_ids += response_ids

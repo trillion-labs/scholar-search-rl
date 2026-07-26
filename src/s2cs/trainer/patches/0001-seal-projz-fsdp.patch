@@ -1,0 +1,52 @@
+--- a/verl/workers/fsdp_workers.py
++++ b/verl/workers/fsdp_workers.py
+@@ -130,6 +130,31 @@
+     return None
+ 
+ 
++class ProjZModule(torch.nn.Module):
++    """SEAL separation head: projects an actor hidden state to a scalar logit.
++
++    Attached to the actor before FSDP wrap so its params are sharded + optimized.
++    Output (…, 1) feeds the per-token correct/incorrect BCE in
++    ``core_algos.seal_classification_loss``.
++    """
++
++    def __init__(self, hidden_size: int, num_layers: int = 3, dropout: float = 0.1):
++        super().__init__()
++        layers = []
++        for _ in range(num_layers - 1):
++            layers += [
++                torch.nn.Linear(hidden_size, hidden_size),
++                torch.nn.GELU(),
++                torch.nn.LayerNorm(hidden_size),
++                torch.nn.Dropout(dropout),
++            ]
++        layers.append(torch.nn.Linear(hidden_size, 1))
++        self.net = torch.nn.Sequential(*layers)
++
++    def forward(self, x):
++        return self.net(x)
++
++
+ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
+     """
+     This worker can be instantiated as a standalone actor or a standalone rollout or a standalone reference policy
+@@ -440,6 +465,17 @@
+         if self.rank == 0:
+             print_model_size(actor_module)
+ 
++        # SEAL: attach the separation head to the actor before FSDP wrap so its
++        # params are sharded and trained. Gated by S2CS_SEAL_COEF (env, not a
++        # verl config field, to avoid the strict actor-config dataclass schema).
++        seal_coef = float(os.environ.get("S2CS_SEAL_COEF", "0.0"))
++        if role == "actor" and seal_coef > 0.0:
++            proj_layers = int(os.environ.get("S2CS_SEAL_PROJ_LAYER", "3"))
++            hidden_size = actor_module.config.hidden_size
++            actor_module.proj_z = ProjZModule(hidden_size, num_layers=proj_layers).to(torch_dtype)
++            if self.rank == 0:
++                print(f"[SEAL] proj_z attached: {proj_layers} layers, dim={hidden_size}, coef={seal_coef}")
++
+         log_gpu_memory_usage(f"After init {role} from HF AutoModel", logger=logger)
+ 
+         # We wrap FSDP for rollout as well
